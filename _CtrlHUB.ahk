@@ -7,51 +7,63 @@ SetWorkingDir %A_ScriptDir%  ; Ensures a consistent starting directory.
 #Include %A_ScriptDir%\PowerPlan.ahk
 /*===============================================================================
 Changelog
+Crutch count = 1
 r1. 
-Initial setup - everything is hardcoded. base logic fully working
+Initial build - everything is hardcoded. base logic fully working
 Supports change of powerplans and FanContol software.
 Added Prismatik support(maybe put this in lib)
 Added block of annoying hotkeys
+
+r2.
+Added ini config file
+Added kostyl number 1
+need to try 
+#if ...
+#if 
+for hotkey remap
 ===============================================================================
 */
-;GlobalSwitches
-GSPower := 1
-GSFan := 1
-GSDebug := 1
-GSKeyRemap :=1
+;Variables
+configini=%A_ScriptDir%\config.ini
 
-;Hotkeys variables
-IstMainHotkey := "#!h"
+;program first run creating ini file
+ifnotexist,%configini%
+	{
+	MsgBox Welcome to CtrlHUB!`n `n Looks like this is a first time`n that you launched this program.`n We need to create some config file.`n Hit OK to start.	
+	;variables for ini file
+	GSiniPower := 1
+	GSiniFan := 1
+	GSiniDebug := 1
+	GSiniKeyRemap :=1
+	IstIniMainHotkey := "#!h"
+	;ini creation
+	IniWrite, %GSiniPower%, %configini%, GlobalSwitches, Power
+	IniWrite, %GSiniFan%, %configini%, GlobalSwitches, Fan
+	IniWrite, %GSiniDebug%, %configini%, GlobalSwitches, Debug
+	IniWrite, %GSiniKeyRemap%, %configini%, GlobalSwitches, KeyRemap
+	IniWrite, %IstIniMainHotkey%, %configini%, Hotkeys, IstIniMainHotkey
+	
+	MsgBox Config file created Thanks for patience.`n Now everything works fine.`n You can find CtrlHUB in tray menu or launch via hotkey.
+	}
+;Reading ini section
+IniRead, GSPower, %configini%, GlobalSwitches, Power
+IniRead, GSFan, %configini%, GlobalSwitches, Fan
+IniRead, GSDebug, %configini%, GlobalSwitches, Debug
+IniRead, GSKeyRemap, %configini%, GlobalSwitches, KeyRemap
+IniRead, IstMainHotkey, %configini%, Hotkeys, IstIniMainHotkey
+
 
 ;Powerplan lib init
 arrPowerPlanNames := DopowerPlan()
 ;Variables
 
 
-;Hotkeys setup
-Hotkey, %IstMainHotkey%, ActivityMainHotkey
-
-; dummy impossible hotkey for proper work)))
-#!^+ScrollLock::
-MsgBox WTF HOW DID YOU PRESSED THESE SCHITT?!
-return
-
-
-AppsKey::RWin
-^AppsKey::AppsKey
-
-Browser_Search:: ;blocks annoying key
-return
-
-Launch_App2::
-return
-
 ; Tray submenus
 Menu, DebugSubMenu, Standard
 
 ;tray menu
-Menu, Tray, Tip, CtrlHUB. r.1
-Menu, Tray, Add, CtrlHUB. r.1, DasTitle
+Menu, Tray, Tip, CtrlHUB. r.2
+Menu, Tray, Add, CtrlHUB. r.2, DasTitle
 
 if (GSPower = 1)
 {
@@ -92,11 +104,60 @@ else
 
 Menu, Tray, NoStandard	
 Menu, Tray, Add, Exit, DasExit
-Menu, Tray, Disable, CtrlHUB. r.1
-Menu, Tray, Default, CtrlHUB. r.1
-Menu, Tray, Check, Energy Save mode
+Menu, Tray, Disable, CtrlHUB. r.2
+Menu, Tray, Default, CtrlHUB. r.2
+if (GSPower = 1)
+	{
+	Menu, Tray, Check, Energy Save mode
+	}
+else
+	{}
+if (GSFan = 1)
+	{
 Menu, Tray, Check, Minimal Fans speed
+	}
+else
+	{}
 Menu, Tray, Click, 2
+
+;Hotkeys setup
+Hotkey, %IstMainHotkey%, ActivityMainHotkey
+
+
+
+; dummy impossible hotkey for proper work)))
+#!^+ScrollLock::
+MsgBox WTF HOW DID YOU PRESSED THESE SCHITT?!
+return
+
+^AppsKey::
+	if (GSKeyRemap = 1)
+		Send {AppsKey}
+	else
+		Send {AppsKey}; костыль 1
+return
+
+AppsKey::
+	if (GSKeyRemap = 1)
+		Send {RWin}
+	else
+		Send {AppsKey}
+return
+	
+
+Browser_Search:: ;blocks annoying key
+	if (GSKeyRemap = 1)
+		{}
+	else
+		Send {Browser_Search}
+return
+
+Launch_App2::
+	if (GSKeyRemap = 1)
+		{}
+	else
+		Send {Launch_App2}
+return
 
 ;Hotkeys procedures
 ActivityMainHotkey:

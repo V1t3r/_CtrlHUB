@@ -21,42 +21,61 @@ need to try
 #if ...
 #if 
 for hotkey remap
+
+r3. Settings UI Integration
+next will be ini build and rewrite of procedures
 ===============================================================================
 */
 ;Variables
 configini=%A_ScriptDir%\config.ini
 
+;global PowerplanEnSave, PowerplanBalance, PowerplanMaxPow
 ;program first run creating ini file
 ifnotexist,%configini%
 	{
 	MsgBox Welcome to CtrlHUB!`n `n Looks like this is a first time`n that you launched this program.`n We need to create some config file.`n Hit OK to start.	
-	;variables for ini file
-	GSiniPower := 1
-	GSiniFan := 1
-	GSiniDebug := 1
-	GSiniKeyRemap :=1
-	IstIniMainHotkey := "#!h"
 	;ini creation
-	IniWrite, %GSiniPower%, %configini%, GlobalSwitches, Power
-	IniWrite, %GSiniFan%, %configini%, GlobalSwitches, Fan
-	IniWrite, %GSiniDebug%, %configini%, GlobalSwitches, Debug
-	IniWrite, %GSiniKeyRemap%, %configini%, GlobalSwitches, KeyRemap
-	IniWrite, %IstIniMainHotkey%, %configini%, Hotkeys, IstIniMainHotkey
+	;IniWrite, 1, %configini%, Global_Switches, Power
+	IniWrite, 1, %configini%, Global_Switches, Fan
+	IniWrite, 1, %configini%, Global_Switches, Debug
+	IniWrite, 1, %configini%, Global_Switches, KeyRemap
+	IniWrite, "#!h", %configini%, Hotkeys, IstIniMainHotkey
+	;PowerPlans ini section
+	IniWrite, 1, %configini%, PowerPlans, PowerPlansEnabled
+	IniWrite, 3, %configini%, PowerPlans, EnergySave
+	IniWrite, 1, %configini%, PowerPlans, BalancedMode
+	IniWrite, 2, %configini%, PowerPlans, MaximumPower
+	
 	
 	MsgBox Config file created Thanks for patience.`n Now everything works fine.`n You can find CtrlHUB in tray menu or launch via hotkey.
 	}
 ;Reading ini section
-IniRead, GSPower, %configini%, GlobalSwitches, Power
 IniRead, GSFan, %configini%, GlobalSwitches, Fan
 IniRead, GSDebug, %configini%, GlobalSwitches, Debug
 IniRead, GSKeyRemap, %configini%, GlobalSwitches, KeyRemap
 IniRead, IstMainHotkey, %configini%, Hotkeys, IstIniMainHotkey
+;Power Plans ini read
+IniRead, GSPowerSwitch, %configini%, PowerPlans, PowerPlansEnabled
+IniRead, PowerplanEnSave, %configini%, PowerPlans, EnergySave
+IniRead, PowerplanBalance, %configini%, PowerPlans, BalancedMode
+IniRead, PowerplanMaxPow, %configini%, PowerPlans, MaximumPower
+
 
 
 ;Powerplan lib init
-arrPowerPlanNames := DopowerPlan()
+arrpp := DopowerPlan()
+GSPowerplan:=0
+SetPPList := ""
+Loop, % arrpp.MaxIndex()
+	SetPPList .=  arrpp[A_Index] "|"
+	
 ;Variables
-
+;Fan Control Variables
+FCFolder := ""
+arrFCProf := ""
+FCexeDetected:= 0
+;Hotkeys vars
+WinmodforMainhotkey := 0
 
 ; Tray submenus
 Menu, DebugSubMenu, Standard
@@ -65,7 +84,7 @@ Menu, DebugSubMenu, Standard
 Menu, Tray, Tip, CtrlHUB. r.2
 Menu, Tray, Add, CtrlHUB. r.2, DasTitle
 
-if (GSPower = 1)
+if (GSPowerSwitch = 1)
 {
 Menu, Tray, Add, 
 Menu, Tray, Add, Energy Save mode, DasPlanPowerSave
@@ -106,7 +125,7 @@ Menu, Tray, NoStandard
 Menu, Tray, Add, Exit, DasExit
 Menu, Tray, Disable, CtrlHUB. r.2
 Menu, Tray, Default, CtrlHUB. r.2
-if (GSPower = 1)
+if (GSPowerSwitch = 1)
 	{
 	Menu, Tray, Check, Energy Save mode
 	}
@@ -169,30 +188,75 @@ DasTitle: ; This shit should be never enabled
 	Menu, Tray, Show
 return
 
-DasSettings: ; Settings :|
-MsgBox Under construction!
-return
+DasSettings: ; Settings
+Gui, SettingsGUI:Add, Tab3, , Power Plans|Fan Control|Hotkeys
+Gui, SettingsGUI:Tab, Power Plans ; power plans tab elements begin
+GUi, SettingsGUI:Add, Checkbox, vGSPowerSwitch Checked%GSPowerSwitch% x20 y40, Enable Power plans control
+Gui, SettingsGUI:Add, DropDownList, Altsubmit vPowerplanEnSave Choose%PowerplanEnSave% x20 y70 w150, %SetPPList%
+Gui, SettingsGUI:Add, DropDownList, Altsubmit vPowerplanBalance Choose%PowerplanBalance% x20 y100 w150, %SetPPList%
+Gui, SettingsGUI:Add, DropDownList, Altsubmit vPowerplanMaxPow Choose%PowerplanMaxPow% x20 y130 w150, %SetPPList%
+Gui, SettingsGUI:Add, Text, x180 y73,Power saving
+Gui, SettingsGUI:Add, Text, x180 y103,Balanced 
+Gui, SettingsGUI:Add, Text, x180 y133,Max Performance
+Gui, SettingsGUI:Add, Button, gPPSaveBtn x185 y160 w80, Save
+Gui, SettingsGUI:Tab ; end of power plans tab elements
+
+Gui, SettingsGUI:Tab, Fan Control ; Fan controls begin
+GUi, SettingsGUI:Add, Checkbox, vGSFan Checked%GSFan% x20 y40, Enable Fans control
+Gui, SettingsGUI:Add, Button, gFCListCreate x170 y35 , FanControl folder
+Gui, SettingsGUI:Add, DropDownList, Altsubmit vFCP1 Choose3 x20 y70 w150, %arrFCProf%
+Gui, SettingsGUI:Add, DropDownList, Altsubmit vFCP2 Choose1 x20 y100 w150, %arrFCProf%
+Gui, SettingsGUI:Add, DropDownList, Altsubmit vFCP3 Choose2 x20 y130 w150, %arrFCProf%
+Gui, SettingsGUI:Add, Text, x180 y73, Silent mode
+Gui, SettingsGUI:Add, Text, x180 y103, Minimal speed
+Gui, SettingsGUI:Add, Text, x180 y133, Automatic mode
+Gui, SettingsGUI:Add, Button, gFCSaveBtn x185 y160 w80, Save
+GUi, SettingsGUI:Add, Checkbox, vFCexeDetected Checked%FCexeDetected% x20 y163, ControlFan founded
+GuiControl, SettingsGUI:Disable, ControlFan founded
+Gui, SettingsGUI:Tab ; end of fan controls
+
+Gui, SettingsGUI:Tab, Hotkeys ;Hotkeys tab controls
+Gui, SettingsGUI:Add, Checkbox, vWinmodforMainhotkey Checked%WinmodforMainhotkey% x20 y40, Win
+Gui, SettingsGUI:Add, Text, x75 y40, Menu Hotkey
+Gui, SettingsGUI:Add, Hotkey, vIstMainHotkey x20 y60, !h
+Gui, SettingsGUI:Add, Checkbox, vWinmodforPPhotkey Checked%WinmodforPPhotkey% x20 y90, Win
+Gui, SettingsGUI:Add, Text, x75 y90, Power Plans
+Gui, SettingsGUI:Add, Hotkey, vIstFCHotkey x20 y110, !w
+Gui, SettingsGUI:Add, Checkbox, vWinmodforFChotkey Checked%WinmodforFChotkey% x20 y140, Win
+Gui, SettingsGUI:Add, Text, x75 y140, Fans Control
+Gui, SettingsGUI:Add, Hotkey, vIstPPHotkey x20 y160, !q
+Gui, SettingsGUI:Add, Checkbox, vAigo108dis Checked%vAigo108dis% x160 y35 w100, Hotkeys remap for Aigo 108
+Gui, SettingsGUI:Add, Button, gHCSaveBtn x185 y160 w80, Save
+Gui, SettingsGUI:Tab ; end of hotkeys controls
+
+Gui, SettingsGUI:Add, Button, gSetBtn x195 y195 w80, Apply
+Gui, SettingsGUI:Add, Button, gCanclBtn x105 y195 w80, Cancel
+Gui, SettingsGUI:Show
+return 
 
 DasExit: ;exit
 	ExitApp
 return
 
 DasPlanPowerSave: ; powersaving mode
-	DopowerPlan(arrPowerPlanNames[4])
+	GuiControlGet, PowerplanEnSave
+	DopowerPlan(arrpp[PowerplanEnSave])
 	Menu, Tray, Check, Energy Save mode
 	Menu, Tray, Uncheck, Balanced mode
 	Menu, Tray, Uncheck, Max Performance mode
 return
 
 DasPlanBalance: ; balanced power mode
-	DopowerPlan(arrPowerPlanNames[3])
+	GuiControlGet, PowerplanBalance
+	DopowerPlan(arrpp[PowerplanBalance])
 	Menu, Tray, Uncheck, Energy Save mode
 	Menu, Tray, Check, Balanced mode
 	Menu, Tray, Uncheck, Max Performance mode
 return
 
 DasPlanMaxPerform: ; Max performance mode
-	DopowerPlan(arrPowerPlanNames[5])
+	GuiControlGet, PowerplanMaxPow
+	DopowerPlan(arrpp[PowerplanMaxPow])
 	Menu, Tray, Uncheck, Energy Save mode
 	Menu, Tray, Uncheck, Balanced mode
 	Menu, Tray, Check, Max Performance mode
@@ -223,7 +287,76 @@ DasPropellerFuckEars: ; Fans fullspeed mode
 	MsgBox АААА! ТРАХАТЬ УШИ!!!
 return
 
+;-----------------------------Settings procedures--------------------------------
+PPSaveBtn:
+Gui, SettingsGUI:Submit, NoHide
+GuiControlGet, GSPowerSwitch
+GuiControlGet, PowerplanEnSave
+GuiControlGet, PowerplanBalance
+GuiControlGet, PowerplanMaxPow
+IniWrite, %GSPowerSwitch%, %configini%, PowerPlans, PowerPlansEnabled
+IniWrite, %PowerplanEnSave%, %configini%, PowerPlans, EnergySave
+IniWrite, %PowerplanBalance%, %configini%, PowerPlans, BalancedMode
+IniWrite, %PowerplanMaxPow%, %configini%, PowerPlans, MaximumPower
+MSGBox Powerplans settings written!
+return
 
+SetBtn:
+return
+
+CanclBtn:
+Gui, SettingsGUI:Destroy
+return
+
+SettingsGUIGuiClose:
+Gui, SettingsGUI:Destroy
+return
+
+FCListCreate: ; Creates list of Fan Control profiles
+FileSelectFolder, FCFolder
+
+if (FCFolder = "")
+{
+    MsgBox, You didn't select FC folder
+    Return
+}
+else
+{
+	Gosub FCExeCheck
+    Loop Files, %FCFolder%\Configurations\*.json
+    {
+        arrFCProf .= A_LoopFileName "|"
+    }
+    MsgBox %arrFCProf%
+    GuiControl, , FCP1, %arrFCProf%
+    GuiControl, , FCP2, %arrFCProf%
+    GuiControl, , FCP3, %arrFCProf%
+	GuiControl, , FCexeDetected, % FCexeDetected ? 1 : 0  ; Update checkbox is exe detected
+    Gui, Show
+    Return
+}
+return
+
+HCSaveBtn:
+MSGBox This will save Hotkeys
+return
+
+FCExeCheck:
+ IfNotExist, %FCFolder%\FanControl.exe
+	{
+	MsgBox You choose wrong FC folder! Exe file not detected. Choose right folder!
+	FCexeDetected:= 0
+	
+	}
+else
+	{
+	FCexeDetected:= 1
+	}
+return
+
+FCSaveBtn:
+MSGBox This will save FC SettingsGUI
+return
 
 
 ;Prismatik Control "library" made by Unknown warrior - dunno who made that but I will find

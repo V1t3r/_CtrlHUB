@@ -24,6 +24,12 @@ for hotkey remap
 
 r3. Settings UI Integration
 next will be ini build and rewrite of procedures
+rewritten powerplans and added ini section of this
+
+r4. FanControl sex
+FanControl fuckin complete
+Spagetti code powered FC settings and init
+Its now saves last states of Power Plans and Fan Control profile !!! Need to set delay timer to wait Fan Control will launch
 ===============================================================================
 */
 ;Variables
@@ -31,7 +37,7 @@ configini=%A_ScriptDir%\config.ini
 
 ;global PowerplanEnSave, PowerplanBalance, PowerplanMaxPow
 ;program first run creating ini file
-ifnotexist,%configini%
+ifnotexist, %configini%
 	{
 	MsgBox Welcome to CtrlHUB!`n `n Looks like this is a first time`n that you launched this program.`n We need to create some config file.`n Hit OK to start.	
 	;ini creation
@@ -45,12 +51,20 @@ ifnotexist,%configini%
 	IniWrite, 3, %configini%, PowerPlans, EnergySave
 	IniWrite, 1, %configini%, PowerPlans, BalancedMode
 	IniWrite, 2, %configini%, PowerPlans, MaximumPower
+	IniWrite, 1, %configini%, PowerPlans, LastPlan
+	;FanControl ini section
+	IniWrite, 1, %configini%, FanControl, FanControlEnabled
+	IniWrite, "", %configini%, FanControl, FanControlFolder
+	IniWrite, "", %configini%, FanControl, FanControlSilent
+	IniWrite, "", %configini%, FanControl, FanControlMinimal
+	IniWrite, "", %configini%, FanControl, FanControlAuto
+	IniWrite, "", %configini%, FanControl, FanControlFE
+	IniWrite, 1, %configini%, FanControl, LastProfile
 	
 	
 	MsgBox Config file created Thanks for patience.`n Now everything works fine.`n You can find CtrlHUB in tray menu or launch via hotkey.
 	}
 ;Reading ini section
-IniRead, GSFan, %configini%, GlobalSwitches, Fan
 IniRead, GSDebug, %configini%, GlobalSwitches, Debug
 IniRead, GSKeyRemap, %configini%, GlobalSwitches, KeyRemap
 IniRead, IstMainHotkey, %configini%, Hotkeys, IstIniMainHotkey
@@ -59,7 +73,15 @@ IniRead, GSPowerSwitch, %configini%, PowerPlans, PowerPlansEnabled
 IniRead, PowerplanEnSave, %configini%, PowerPlans, EnergySave
 IniRead, PowerplanBalance, %configini%, PowerPlans, BalancedMode
 IniRead, PowerplanMaxPow, %configini%, PowerPlans, MaximumPower
-
+;FanControl ini Read
+IniRead, GSFanSwitch, %configini%, FanControl, FanControlEnabled
+IniRead, FCFolder, %configini%, FanControl, FanControlFolder
+IniRead, FCPSilent, %configini%, FanControl, FanControlSilent
+IniRead, FCPMinimal, %configini%, FanControl, FanControlMinimal
+IniRead, FCPAuto, %configini%, FanControl, FanControlAuto
+IniRead, FCPSilentSTR, %configini%, FanControl, FanControlSilent
+IniRead, FCPMinimalSTR, %configini%, FanControl, FanControlMinimal
+IniRead, FCPAutoSTR, %configini%, FanControl, FanControlAuto
 
 
 ;Powerplan lib init
@@ -69,75 +91,43 @@ SetPPList := ""
 Loop, % arrpp.MaxIndex()
 	SetPPList .=  arrpp[A_Index] "|"
 	
+;FanContol Precheck sequence
+IfExist, %FCFolder%\FanControl.exe
+	{
+	Gosub, FCPrecheck
+	}
+else
+	{
+	}
+	
+	
+	
 ;Variables
-;Fan Control Variables
-FCFolder := ""
-arrFCProf := ""
-FCexeDetected:= 0
 ;Hotkeys vars
 WinmodforMainhotkey := 0
 
 ; Tray submenus
 Menu, DebugSubMenu, Standard
 
-;tray menu
-Menu, Tray, Tip, CtrlHUB. r.2
-Menu, Tray, Add, CtrlHUB. r.2, DasTitle
+Gosub TrayDraw
 
-if (GSPowerSwitch = 1)
+Gosub InitPP
+
+Process, Wait, FanControl.exe, 30
+NewPID := ErrorLevel  ; Save the value immediately since ErrorLevel is often changed.
+if not NewPID
 {
-Menu, Tray, Add, 
-Menu, Tray, Add, Energy Save mode, DasPlanPowerSave
-Menu, Tray, Add, Balanced mode, DasPlanBalance
-Menu, Tray, Add, Max Performance mode, DasPlanMaxPerform
+    MsgBox FanControl wan't launched in 30 seconds - functionality Disabled
+	GSFanSwitch = 0
+	Menu, Tray, DeleteAll
+	Gosub TrayDraw
+    return
 }
-else
-	{}
-	
-if (GSFan = 1)
-{
-Menu, Tray, Add,
-Menu, Tray, Add, Silent Fans mode, DasPropellerSilent
-Menu, Tray, Add, Minimal Fans speed, DasPropellerMinimal
-Menu, Tray, Add, Auto Control Fans, DasPropellerAuto
-}
-else
-	{}
-	
-Menu, Tray, Add,
-
-if (GSPower = 0) and (GSDebug = 0)
+else 
 	{
-	Menu, Tray, Add, You Disabled Everything!, DasSettings
-	Menu, Tray, Add, Click here to open, DasSettings
+	Gosub InitFC
 	}
 
-Menu, Tray, Add, Settings, DasSettings
-
-if (GSDebug = 1) 
-	{
-	Menu, Tray, Add, Debug Menu, :DebugSubMenu
-	}
-else
-	{}
-
-Menu, Tray, NoStandard	
-Menu, Tray, Add, Exit, DasExit
-Menu, Tray, Disable, CtrlHUB. r.2
-Menu, Tray, Default, CtrlHUB. r.2
-if (GSPowerSwitch = 1)
-	{
-	Menu, Tray, Check, Energy Save mode
-	}
-else
-	{}
-if (GSFan = 1)
-	{
-Menu, Tray, Check, Minimal Fans speed
-	}
-else
-	{}
-Menu, Tray, Click, 2
 
 ;Hotkeys setup
 Hotkey, %IstMainHotkey%, ActivityMainHotkey
@@ -188,7 +178,116 @@ DasTitle: ; This shit should be never enabled
 	Menu, Tray, Show
 return
 
+TrayDraw:
+;tray menu
+Menu, Tray, Tip, CtrlHUB. r.4
+Menu, Tray, Add, CtrlHUB. r.4, DasTitle
+
+if (GSPowerSwitch = 1)
+{
+Menu, Tray, Add, 
+Menu, Tray, Add, Energy Save mode, DasPlanPowerSave
+Menu, Tray, Add, Balanced mode, DasPlanBalance
+Menu, Tray, Add, Max Performance mode, DasPlanMaxPerform
+}
+else
+	{}
+	
+if (GSFanSwitch = 1)
+{
+Menu, Tray, Add,
+Menu, Tray, Add, Silent Fans mode, DasPropellerSilent
+Menu, Tray, Add, Minimal Fans speed, DasPropellerMinimal
+Menu, Tray, Add, Auto Control Fans, DasPropellerAuto
+}
+else
+	{}
+	
+Menu, Tray, Add,
+
+if (GSPowerSwitch = 0) and (GSFanSwitch = 0)
+	{
+	Menu, Tray, Add, You Disabled Everything!, DasSettings
+	Menu, Tray, Add, Click here to open, DasSettings
+	}
+
+Menu, Tray, Add, Settings, DasSettings
+
+if (GSDebug = 1) 
+	{
+	Menu, Tray, Add, Debug Menu, :DebugSubMenu
+	}
+else
+	{}
+
+Menu, Tray, NoStandard	
+Menu, Tray, Add, Exit, DasExit
+Menu, Tray, Disable, CtrlHUB. r.4
+Menu, Tray, Default, CtrlHUB. r.4
+if (GSPowerSwitch = 1)
+	{
+	Menu, Tray, Check, Energy Save mode
+	}
+else
+	{}
+if (GSFanSwitch = 1)
+	{
+Menu, Tray, Check, Minimal Fans speed
+	}
+else
+	{}
+Menu, Tray, Click, 2
+return
+
+
+InitPP:
+IniRead, LastPP, %configini%, PowerPlans, LastPlan
+if (LastPP = 1)
+	{
+	Gosub DasPlanPowerSave
+	}
+else if (LastPP = 2)
+	{
+	Gosub DasPlanBalance
+	}
+else if (LastPP = 3)
+	{
+	Gosub DasPlanMaxPerform
+	}
+else 
+	{
+	MSGBox Its bad idea to change last Power Plan ini file!
+	Gosub DasPlanPowerSave
+	}
+return
+
+InitFC:
+IniRead, LastFCP, %configini%, FanControl, LastProfile
+if (LastFCP = 1)
+	{
+	Gosub DasPropellerSilent
+	}
+else if (LastFCP = 2)
+	{
+	Gosub DasPropellerMinimal
+	}
+else if (LastFCP = 3)
+	{
+	Gosub DasPropellerAuto
+	}
+else if (LastFCP = 4)
+	{
+	Gosub DasPropellerFuckEars
+	}
+else 
+	{
+	MSGBox Its bad idea to change last Fans Profile in ini file!
+	Gosub DasPropellerSilent
+	}
+return
+
 DasSettings: ; Settings
+Gosub, FCPrecheck
 Gui, SettingsGUI:Add, Tab3, , Power Plans|Fan Control|Hotkeys
 Gui, SettingsGUI:Tab, Power Plans ; power plans tab elements begin
 GUi, SettingsGUI:Add, Checkbox, vGSPowerSwitch Checked%GSPowerSwitch% x20 y40, Enable Power plans control
@@ -202,11 +301,14 @@ Gui, SettingsGUI:Add, Button, gPPSaveBtn x185 y160 w80, Save
 Gui, SettingsGUI:Tab ; end of power plans tab elements
 
 Gui, SettingsGUI:Tab, Fan Control ; Fan controls begin
-GUi, SettingsGUI:Add, Checkbox, vGSFan Checked%GSFan% x20 y40, Enable Fans control
+GUi, SettingsGUI:Add, Checkbox, vGSFanSwitch Checked%GSFanSwitch% x20 y40, Enable Fans control
 Gui, SettingsGUI:Add, Button, gFCListCreate x170 y35 , FanControl folder
-Gui, SettingsGUI:Add, DropDownList, Altsubmit vFCP1 Choose3 x20 y70 w150, %arrFCProf%
-Gui, SettingsGUI:Add, DropDownList, Altsubmit vFCP2 Choose1 x20 y100 w150, %arrFCProf%
-Gui, SettingsGUI:Add, DropDownList, Altsubmit vFCP3 Choose2 x20 y130 w150, %arrFCProf%
+Gui, SettingsGUI:Add, DropDownList, vFCPSilent  x20 y70 w150, %arrFCProf%
+Gui, SettingsGUI:Add, DropDownList, vFCPMinimal  x20 y100 w150, %arrFCProf%
+Gui, SettingsGUI:Add, DropDownList, vFCPAuto x20 y130 w150, %arrFCProf%
+GuiControl,SettingsGUI: ChooseString, FCPSilent, %FCPSilentSTR%
+GuiControl,SettingsGUI: ChooseString, FCPMinimal, %FCPMinimalSTR%
+GuiControl,SettingsGUI: ChooseString, FCPAuto, %FCPAutoSTR%
 Gui, SettingsGUI:Add, Text, x180 y73, Silent mode
 Gui, SettingsGUI:Add, Text, x180 y103, Minimal speed
 Gui, SettingsGUI:Add, Text, x180 y133, Automatic mode
@@ -244,6 +346,7 @@ DasPlanPowerSave: ; powersaving mode
 	Menu, Tray, Check, Energy Save mode
 	Menu, Tray, Uncheck, Balanced mode
 	Menu, Tray, Uncheck, Max Performance mode
+	IniWrite, 1, %configini%, PowerPlans, LastPlan
 return
 
 DasPlanBalance: ; balanced power mode
@@ -252,6 +355,7 @@ DasPlanBalance: ; balanced power mode
 	Menu, Tray, Uncheck, Energy Save mode
 	Menu, Tray, Check, Balanced mode
 	Menu, Tray, Uncheck, Max Performance mode
+	IniWrite, 2, %configini%, PowerPlans, LastPlan
 return
 
 DasPlanMaxPerform: ; Max performance mode
@@ -260,31 +364,40 @@ DasPlanMaxPerform: ; Max performance mode
 	Menu, Tray, Uncheck, Energy Save mode
 	Menu, Tray, Uncheck, Balanced mode
 	Menu, Tray, Check, Max Performance mode
+	IniWrite, 3, %configini%, PowerPlans, LastPlan
 return
 
 DasPropellerSilent: ; Silent Fans
-	Run, C:\Software\FanControl\FanControl.exe -c Silent.json -m
+	Run, %FCFolder%\FanControl.exe -c %FCPSilent% -m
 	Menu, Tray, Check, Silent Fans mode
 	Menu, Tray, Uncheck, Minimal Fans speed
 	Menu, Tray, Uncheck, Auto Control Fans
+IniWrite, 1, %configini%, FanControl, LastProfile
 return
 
 DasPropellerMinimal: ; Fans minimal speed
-	Run, C:\Software\FanControl\FanControl.exe -c Minimal.json -m
+	Run, %FCFolder%\FanControl.exe -c %FCPMinimal% -m
 	Menu, Tray, Uncheck, Silent Fans mode
 	Menu, Tray, Check, Minimal Fans speed
 	Menu, Tray, Uncheck, Auto Control Fans
+IniWrite, 2, %configini%, FanControl, LastProfile
 return
 
 DasPropellerAuto: ; Fans controlled by Motherboard
-	Run, C:\Software\FanControl\FanControl.exe -c Motherboard.json -m
+	Run, %FCFolder%\FanControl.exe -c %FCPAuto% -m
 	Menu, Tray, Uncheck, Silent Fans mode
 	Menu, Tray, Uncheck, Minimal Fans speed
 	Menu, Tray, Check, Auto Control Fans
+IniWrite, 3, %configini%, FanControl, LastProfile
 return
 
 DasPropellerFuckEars: ; Fans fullspeed mode
 	MsgBox АААА! ТРАХАТЬ УШИ!!!
+	FCPFuckEars = fuck_ears.json
+	;IniWrite, %FCPFuckEars%, %configini%, FanControl, LastProfile
+	Run, %FCFolder%\FanControl.exe -c %FCPFuckEars% -m
+	sleep 10000
+	Gosub DasPropellerMinimal
 return
 
 ;-----------------------------Settings procedures--------------------------------
@@ -298,6 +411,8 @@ IniWrite, %GSPowerSwitch%, %configini%, PowerPlans, PowerPlansEnabled
 IniWrite, %PowerplanEnSave%, %configini%, PowerPlans, EnergySave
 IniWrite, %PowerplanBalance%, %configini%, PowerPlans, BalancedMode
 IniWrite, %PowerplanMaxPow%, %configini%, PowerPlans, MaximumPower
+Menu, Tray, DeleteAll
+Gosub TrayDraw
 MSGBox Powerplans settings written!
 return
 
@@ -313,8 +428,8 @@ Gui, SettingsGUI:Destroy
 return
 
 FCListCreate: ; Creates list of Fan Control profiles
+arrFCProf := ""
 FileSelectFolder, FCFolder
-
 if (FCFolder = "")
 {
     MsgBox, You didn't select FC folder
@@ -328,17 +443,80 @@ else
         arrFCProf .= A_LoopFileName "|"
     }
     MsgBox %arrFCProf%
-    GuiControl, , FCP1, %arrFCProf%
-    GuiControl, , FCP2, %arrFCProf%
-    GuiControl, , FCP3, %arrFCProf%
+    GuiControl, , FCPSilent, %arrFCProf%
+    GuiControl, , FCPMinimal, %arrFCProf%
+    GuiControl, , FCPAuto, %arrFCProf%
 	GuiControl, , FCexeDetected, % FCexeDetected ? 1 : 0  ; Update checkbox is exe detected
-    Gui, Show
+    Gui,SettingsGUI:Show
     Return
 }
 return
 
+FCPrecheck: ; Creates list of Fan Control profiles
+;MSGBox, FCFOLDER IS %FCFolder%
+arrFCProf := ""
+if (FCFolder = "")
+{
+    MsgBox, You didn't select FC folder
+	FCexeDetected:= 0
+    Return
+}
+else
+{
+	Gosub FCExeCheck
+    Loop Files, %FCFolder%\Configurations\*.json
+    {
+        arrFCProf .= A_LoopFileName "|"
+    }
+   ; MsgBox %arrFCProf%
+	Gosub FCCheckConfFiles
+    GuiControl, , FCPSilent, %arrFCProf%
+    GuiControl, , FCPMinimal, %arrFCProf%
+    GuiControl, , FCPAuto, %arrFCProf%
+	GuiControl, , FCexeDetected, % FCexeDetected ? 1 : 0  ; Update checkbox is exe detected
+    Return
+}
+return
+
+FCCheckConfFiles:
+IfNotExist %FCFolder%\Configurations\%FCPSilentSTR%
+	{
+	MSGBox %FCPSilentSTR% not found! Setup it in settings!
+	FCPSilentSTR := ""
+	}
+	
+IfNotExist %FCFolder%\Configurations\%FCPMinimalSTR%
+	{
+	MSGBox %FCPMinimalSTR% not found! Setup it in settings!
+	FCPMinimalSTR := ""
+	}
+
+IfNotExist %FCFolder%\Configurations\%FCPAutoSTR%
+	{
+	MSGBox %FCPAutoSTR% not found! Setup it in settings!
+	FCPAutoSTR := ""
+	}
+
+Return
+
+FCSaveBtn:
+Gui, SettingsGUI:Submit, NoHide
+GuiControlGet, GSFanSwitch
+GuiControlGet, FCPSilent
+GuiControlGet, FCPMinimal
+GuiControlGet, FCPAuto
+IniWrite, %GSFanSwitch%, %configini%, FanControl, FanControlEnabled
+IniWrite, %FCFolder%, %configini%, FanControl, FanControlFolder
+IniWrite, %FCPSilent%, %configini%, FanControl, FanControlSilent
+IniWrite, %FCPMinimal%, %configini%, FanControl, FanControlMinimal
+IniWrite, %FCPAuto%, %configini%, FanControl, FanControlAuto
+Menu, Tray, DeleteAll
+Gosub TrayDraw
+MSGBox FC Settings saved!
+return
+
 HCSaveBtn:
-MSGBox This will save Hotkeys
+MSGBox This will save Hotkeys settings
 return
 
 FCExeCheck:
@@ -354,9 +532,7 @@ else
 	}
 return
 
-FCSaveBtn:
-MSGBox This will save FC SettingsGUI
-return
+
 
 
 ;Prismatik Control "library" made by Unknown warrior - dunno who made that but I will find

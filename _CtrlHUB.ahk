@@ -30,6 +30,7 @@ r4. FanControl sex
 FanControl fuckin complete
 Spagetti code powered FC settings and init
 Its now saves last states of Power Plans and Fan Control profile !!! Need to set delay timer to wait Fan Control will launch
+fixes fixes fixes
 ===============================================================================
 */
 ;Variables
@@ -53,7 +54,7 @@ ifnotexist, %configini%
 	IniWrite, 2, %configini%, PowerPlans, MaximumPower
 	IniWrite, 1, %configini%, PowerPlans, LastPlan
 	;FanControl ini section
-	IniWrite, 1, %configini%, FanControl, FanControlEnabled
+	IniWrite, 0, %configini%, FanControl, FanControlEnabled
 	IniWrite, "", %configini%, FanControl, FanControlFolder
 	IniWrite, "", %configini%, FanControl, FanControlSilent
 	IniWrite, "", %configini%, FanControl, FanControlMinimal
@@ -86,7 +87,6 @@ IniRead, FCPAutoSTR, %configini%, FanControl, FanControlAuto
 
 ;Powerplan lib init
 arrpp := DopowerPlan()
-GSPowerplan:=0
 SetPPList := ""
 Loop, % arrpp.MaxIndex()
 	SetPPList .=  arrpp[A_Index] "|"
@@ -215,12 +215,14 @@ Menu, Tray, Add, Settings, DasSettings
 
 if (GSDebug = 1) 
 	{
-	Menu, Tray, Add, Debug Menu, :DebugSubMenu
+
 	}
 else
-	{}
+	{
+	Menu, Tray, NoStandard
+	}
 
-Menu, Tray, NoStandard	
+Menu, Tray, Add, Debug Menu, :DebugSubMenu
 Menu, Tray, Add, Exit, DasExit
 Menu, Tray, Disable, CtrlHUB. r.4
 Menu, Tray, Default, CtrlHUB. r.4
@@ -262,6 +264,17 @@ else
 return
 
 InitFC:
+IfExist, %FCFolder%\FanControl.exe
+	{
+	Gosub InitFCStage2
+	}
+else
+	{
+	}
+
+return
+
+InitFCStage2:
 IniRead, LastFCP, %configini%, FanControl, LastProfile
 if (LastFCP = 1)
 	{
@@ -285,6 +298,7 @@ else
 	Gosub DasPropellerSilent
 	}
 return
+
 
 DasSettings: ; Settings
 Gosub, FCPrecheck
@@ -368,6 +382,7 @@ DasPlanMaxPerform: ; Max performance mode
 return
 
 DasPropellerSilent: ; Silent Fans
+
 	Run, %FCFolder%\FanControl.exe -c %FCPSilent% -m
 	Menu, Tray, Check, Silent Fans mode
 	Menu, Tray, Uncheck, Minimal Fans speed
@@ -455,9 +470,14 @@ return
 FCPrecheck: ; Creates list of Fan Control profiles
 ;MSGBox, FCFOLDER IS %FCFolder%
 arrFCProf := ""
-if (FCFolder = "")
+if (FCFolder = "") and (GSFanSwitch = 1)
 {
-    MsgBox, You didn't select FC folder
+    MsgBox, You didn't select FC folder set it in settings
+	FCexeDetected:= 0
+    Return
+}
+if (FCFolder = "") and (GSFanSwitch = 0)
+{
 	FCexeDetected:= 0
     Return
 }

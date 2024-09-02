@@ -1,6 +1,6 @@
 # CtrlHUB is a software to control various parameters of your PC in one place
 
-What is CtrlHUB? This software allows you to control your pc throgh quick menu for this release(r.4)
+What is CtrlHUB? This software allows you to control your pc throgh quick menu and hotkeys
 
 Features
 Power Plan Management: Quickly switch between different power plans (Energy Save, Balanced, Max Performance) via the tray menu.

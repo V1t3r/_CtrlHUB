@@ -6,6 +6,9 @@ SetWorkingDir %A_ScriptDir%  ; Ensures a consistent starting directory.
 #Include, %A_ScriptDir%\Socket.ahk
 #Include %A_ScriptDir%\PowerPlan.ahk
 /*===============================================================================
+TODO
+Make profiles lists change aka save last list to ini and compare with new one
+
 Changelog
 Crutch count = 1
 r1. 
@@ -31,6 +34,11 @@ FanControl fuckin complete
 Spagetti code powered FC settings and init
 Its now saves last states of Power Plans and Fan Control profile !!! Need to set delay timer to wait Fan Control will launch
 fixes fixes fixes
+
+r5. Hotkeys sex
+Working hotkeys logic
+Added icon indication with animation when switch modes
+added logic to find fan contol. if not found disables this module
 ===============================================================================
 */
 ;Variables
@@ -43,7 +51,7 @@ ifnotexist, %configini%
 	MsgBox Welcome to CtrlHUB!`n `n Looks like this is a first time`n that you launched this program.`n We need to create some config file.`n Hit OK to start.	
 	;ini creation
 	;IniWrite, 1, %configini%, Global_Switches, Power
-	IniWrite, 1, %configini%, Global_Switches, Fan
+	;IniWrite, 1, %configini%, Global_Switches, Fan
 	IniWrite, 1, %configini%, Global_Switches, Debug
 	IniWrite, 1, %configini%, Global_Switches, KeyRemap
 	IniWrite, "#!h", %configini%, Hotkeys, IstIniMainHotkey
@@ -61,7 +69,14 @@ ifnotexist, %configini%
 	IniWrite, "", %configini%, FanControl, FanControlAuto
 	IniWrite, "", %configini%, FanControl, FanControlFE
 	IniWrite, 1, %configini%, FanControl, LastProfile
-	
+	;Hotkeys ini Section
+	IniWrite, !h, %configini%, Hotkeys, MenuHotkey
+	IniWrite, 1, %configini%, Hotkeys, MenuHotkeyWinSwitch
+	IniWrite, !h, %configini%, Hotkeys, PPQSHotkey
+	IniWrite, 1, %configini%, Hotkeys, PPQSHotkeyWinSwitch
+	IniWrite, !h, %configini%, Hotkeys, FCQSHotkey
+	IniWrite, 1, %configini%, Hotkeys, FCQSHotkeyWinSwitch
+	IniWrite, 1, %configini%, Hotkeys, Aigo108AnnoySwitch
 	
 	MsgBox Config file created Thanks for patience.`n Now everything works fine.`n You can find CtrlHUB in tray menu or launch via hotkey.
 	}
@@ -83,6 +98,14 @@ IniRead, FCPAuto, %configini%, FanControl, FanControlAuto
 IniRead, FCPSilentSTR, %configini%, FanControl, FanControlSilent
 IniRead, FCPMinimalSTR, %configini%, FanControl, FanControlMinimal
 IniRead, FCPAutoSTR, %configini%, FanControl, FanControlAuto
+;Hotkeys ini Section
+IniRead, MainHotkeyRef, %configini%, Hotkeys, MenuHotkey, !h
+IniRead, WinmodforMainhotkey, %configini%, Hotkeys, MenuHotkeyWinSwitch, 1
+IniRead, PPHotkeyRef, %configini%, Hotkeys, PPQSHotkey, !w
+IniRead, WinmodforPPhotkey, %configini%, Hotkeys, PPQSHotkeyWinSwitch, 1
+IniRead, FCHotkeyRef, %configini%, Hotkeys, FCQSHotkey, !q
+IniRead, WinmodforFChotkey, %configini%, Hotkeys, FCQSHotkeyWinSwitch, 1
+IniRead, vAigo108dis, %configini%, Hotkeys, Aigo108AnnoySwitch, 1
 
 
 ;Powerplan lib init
@@ -100,15 +123,11 @@ else
 	{
 	}
 	
-	
-	
-;Variables
-;Hotkeys vars
-WinmodforMainhotkey := 0
 
 ; Tray submenus
 Menu, DebugSubMenu, Standard
 
+;Init procedure
 Gosub TrayDraw
 
 Gosub InitPP
@@ -130,7 +149,11 @@ else
 
 
 ;Hotkeys setup
+Gosub HKinit
+
 Hotkey, %IstMainHotkey%, ActivityMainHotkey
+Hotkey, %IstPPQSHotkey%, ActivityPPQSHotkey
+Hotkey, %IstFCQSHotkey%, ActivityFCQSHotkey
 
 
 
@@ -172,6 +195,70 @@ return
 ActivityMainHotkey:
 Menu, Tray, Show
 return
+
+ActivityPPQSHotkey:
+if (LastPP = 1)
+	{
+	LastPP := 2
+	Gosub DasPlanBalance 
+	AniPic = %A_ScriptDir%\icons\PPBal.png
+	goto AnimInit
+	}
+else if (LastPP = 2)
+	{
+	LastPP := 3
+	Gosub DasPlanMaxPerform
+	AniPic = %A_ScriptDir%\icons\PPMax.png
+	goto AnimInit
+	}
+else if (LastPP = 3)
+	{
+	LastPP := 1
+	Gosub DasPlanPowerSave
+	AniPic = %A_ScriptDir%\icons\PPSave.png
+	goto AnimInit
+}
+return
+
+ActivityFCQSHotkey:
+IfExist, %FCFolder%\FanControl.exe
+	{
+	Gosub ActivityFCQSHotkeyStage2
+	}
+else
+	{
+	MSGBox FanControl NOT FOUND!!!
+	}
+return
+
+ActivityFCQSHotkeyStage2:
+if (LastFCP = 1)
+	{
+	LastFCP := 2
+	Gosub DasPropellerMinimal
+	Sleep 1000
+	AniPic = %A_ScriptDir%\icons\FCMin.png
+	goto AnimInit
+	}
+else if (LastFCP = 2)
+	{
+	LastFCP := 3
+	Gosub DasPropellerAuto
+	Sleep 1000
+	AniPic = %A_ScriptDir%\icons\FCAuto.png
+	goto AnimInit
+	}
+else if (LastFCP = 3)
+	{
+	LastFCP := 1
+	Gosub DasPropellerSilent
+	Sleep 1000
+	AniPic = %A_ScriptDir%\icons\FCOff.png
+	goto AnimInit
+	}
+return
+
+
 
 ;Tray menu procedures
 DasTitle: ; This shit should be never enabled
@@ -334,15 +421,15 @@ Gui, SettingsGUI:Tab ; end of fan controls
 Gui, SettingsGUI:Tab, Hotkeys ;Hotkeys tab controls
 Gui, SettingsGUI:Add, Checkbox, vWinmodforMainhotkey Checked%WinmodforMainhotkey% x20 y40, Win
 Gui, SettingsGUI:Add, Text, x75 y40, Menu Hotkey
-Gui, SettingsGUI:Add, Hotkey, vIstMainHotkey x20 y60, !h
+Gui, SettingsGUI:Add, Hotkey, vMainHotkeyRef x20 y60, %MainHotkeyRef% 
 Gui, SettingsGUI:Add, Checkbox, vWinmodforPPhotkey Checked%WinmodforPPhotkey% x20 y90, Win
 Gui, SettingsGUI:Add, Text, x75 y90, Power Plans
-Gui, SettingsGUI:Add, Hotkey, vIstFCHotkey x20 y110, !w
+Gui, SettingsGUI:Add, Hotkey, vPPHotkeyRef x20 y110, %PPHotkeyRef%
 Gui, SettingsGUI:Add, Checkbox, vWinmodforFChotkey Checked%WinmodforFChotkey% x20 y140, Win
 Gui, SettingsGUI:Add, Text, x75 y140, Fans Control
-Gui, SettingsGUI:Add, Hotkey, vIstPPHotkey x20 y160, !q
+Gui, SettingsGUI:Add, Hotkey, vFCHotkeyRef x20 y160, %FCHotkeyRef%
 Gui, SettingsGUI:Add, Checkbox, vAigo108dis Checked%vAigo108dis% x160 y35 w100, Hotkeys remap for Aigo 108
-Gui, SettingsGUI:Add, Button, gHCSaveBtn x185 y160 w80, Save
+Gui, SettingsGUI:Add, Button, gHKSaveBtn x185 y160 w80, Save
 Gui, SettingsGUI:Tab ; end of hotkeys controls
 
 Gui, SettingsGUI:Add, Button, gSetBtn x195 y195 w80, Apply
@@ -535,9 +622,61 @@ Gosub TrayDraw
 MSGBox FC Settings saved!
 return
 
-HCSaveBtn:
-MSGBox This will save Hotkeys settings
+HKSaveBtn:
+Gui, SettingsGUI:Submit, NoHide
+GuiControlGet, MainHotkeyRef
+GuiControlGet, WinmodforMainhotkey
+GuiControlGet, PPHotkeyRef
+GuiControlGet, WinmodforPPhotkey
+GuiControlGet, FCHotkeyRef
+GuiControlGet, WinmodforFChotkey2
+GuiControlGet, vAigo108dis
+IniWrite, %MainHotkeyRef%, %configini%, Hotkeys, MenuHotkey
+IniWrite, %WinmodforMainhotkey%, %configini%, Hotkeys, MenuHotkeyWinSwitch
+IniWrite, %PPHotkeyRef%, %configini%, Hotkeys, PPQSHotkey
+IniWrite, %WinmodforPPhotkey%, %configini%, Hotkeys, PPQSHotkeyWinSwitch
+IniWrite, %FCHotkeyRef%, %configini%, Hotkeys, FCQSHotkey
+IniWrite, %WinmodforFChotkey%, %configini%, Hotkeys, FCQSHotkeyWinSwitch
+IniWrite, %vAigo108dis%, %configini%, Hotkeys, Aigo108AnnoySwitch
+Gosub HKinit
+MSGBox HK Setting saved!
 return
+
+
+HKinit:
+MainHotkeyRef := Trim(MainHotkeyRef)
+PPHotkeyRef := Trim(PPHotkeyRef)
+FCHotkeyRef := Trim(FCHotkeyRef)
+
+If (WinmodforMainhotkey)
+	{
+	IstMainHotkey := "#" . MainHotkeyRef
+	}
+else
+	{
+	IstMainHotkey := MainHotkeyRef
+	}
+	
+If (WinmodforPPhotkey)
+	{
+	IstPPQSHotkey := "#" . PPHotkeyRef
+	}
+else
+	{
+	IstPPQSHotkey := PPHotkeyRef
+	}
+
+If (WinmodforFChotkey)
+	{
+	IstFCQSHotkey := "#" . FCHotkeyRef
+	}
+else
+	{
+	IstFCQSHotkey := FCHotkeyRef
+	}
+return
+
+
 
 FCExeCheck:
  IfNotExist, %FCFolder%\FanControl.exe
@@ -551,8 +690,39 @@ else
 	FCexeDetected:= 1
 	}
 return
+;
+AnimInit:
+	winxpos := A_ScreenWidth-(A_ScreenDPI*5)
+	winypos := A_ScreenHeight-(A_ScreenDPI*3)
+	Gui, Anim:Color, 000000
+	Gui, Anim:+LastFound +AlwaysOnTop -Caption +Hwnda1 ToolWindow
+	Gui, Anim:Font, s12 cFFFFFF q5, Enigmatic Unicode
+	;Gui, Anim:Add, Text, , %NotifyText%
+	Gui, Anim:Add, Picture, h200 w-1, %AniPic%
+	Gui, Anim:Show, NoActivate h0 w0
+	WinSet, TransColor, 0000D1 5, ahk_id %a1%
+	Gui, Anim:Show, NoActivate x%winxpos% y%winypos% h200 w200
 
+	Tr := 5
+	Loop, 25
+	{
+	Tr := Tr + 10
+	WinSet, TransColor, 000000 %Tr%, ahk_id %a1%
+	Sleep, 25
+	}
 
+	Sleep 1000
+
+	Tr := 5
+	Loop, 25
+	{
+	Tr := Tr  - 10
+	WinSet, TransColor, 000000 %Tr%, ahk_id %a1%
+	Sleep, 25
+	}
+
+Gui, Anim:Destroy
+return
 
 
 ;Prismatik Control "library" made by Unknown warrior - dunno who made that but I will find
